@@ -192,6 +192,7 @@ namespace spvtools
 
     // 从行主序 array<array<float,N>,M> 中提取 4x4 tile 的 4 个列向量
     // 列 c = { M[r0][c], M[r1][c], M[r2][c], M[r3][c] } -> vec4
+    // 加载顺序按行主序 (r 外层, c 内层) 以获得更好的内存局部性
     void CooperativeVecMatMulFallbackPass::LoadMatTileColumns(
         InstructionBuilder &builder,
         uint32_t base_ptr,
@@ -201,17 +202,28 @@ namespace spvtools
         uint32_t ptr_float_type_id,
         uint32_t float_type_id)
     {
-      for (uint32_t c = 0; c < kTileSize; c++)
+      // 按行主序加载所有 16 个元素
+      uint32_t elem_ids[kTileSize][kTileSize];
+      for (uint32_t r = 0; r < kTileSize; r++)
       {
-        std::vector<uint32_t> elems(kTileSize);
-        for (uint32_t r = 0; r < kTileSize; r++)
+        for (uint32_t c = 0; c < kTileSize; c++)
         {
           uint32_t row_idx = GetOrCreateIntConstant(row_tile * kTileSize + r);
           uint32_t col_idx = GetOrCreateIntConstant(col_tile * kTileSize + c);
           auto *ptr = builder.AddAccessChain(ptr_float_type_id, base_ptr,
                                              {row_idx, col_idx});
           auto *load = builder.AddLoad(float_type_id, ptr->result_id());
-          elems[r] = load->result_id();
+          elem_ids[r][c] = load->result_id();
+        }
+      }
+
+      // 组装列向量: col_ids[c] = { elem[0][c], elem[1][c], elem[2][c], elem[3][c] }
+      for (uint32_t c = 0; c < kTileSize; c++)
+      {
+        std::vector<uint32_t> elems;
+        for (uint32_t r = 0; r < kTileSize; r++)
+        {
+          elems.push_back(elem_ids[r][c]);
         }
         col_ids[c] =
             builder.AddCompositeConstruct(vec4_type_id, elems)->result_id();
