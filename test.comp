@@ -1,0 +1,41 @@
+#version 450 core
+#extension GL_KHR_memory_scope_semantics : enable
+#extension GL_NV_cooperative_vector : enable
+#extension GL_EXT_shader_explicit_arithmetic_types : enable
+#extension GL_EXT_buffer_reference : enable
+#extension GL_EXT_nonuniform_qualifier : enable
+
+layout (local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) buffer MatrixBuf {
+    float16_t matrixData[];
+} matrixBuf;
+
+layout(set = 0, binding = 0) buffer MatrixBuf2 {
+    int8_t matrixData[];
+} matrixBuf2;
+
+layout(constant_id = 0) const int matrixLayout = gl_CooperativeVectorMatrixLayoutColumnMajorNV;
+
+void main()
+{
+    coopvecNV<float, 100> v8;
+    coopvecNV<float, 20> v7;
+    //1*20 x 20*100
+    coopVecMatMulAddNV(
+        v8,                         //result
+        v7,                         //input
+        gl_ComponentTypeFloat16NV,  //inputinterpretation
+        matrixBuf.matrixData,       //matrix
+        11,                         //matrix offet
+        gl_ComponentTypeFloat16NV,  //matrixinterpretation
+        matrixBuf.matrixData,       //bias
+        50,                         //bias offset
+        gl_ComponentTypeFloat16NV,  //biasinterpretation
+        100,                        //M
+        20,                         //K
+        gl_CooperativeVectorMatrixLayoutRowMajorNV, //matrix layout
+        false,                      //transpose
+        300                         //matrixStride
+    );
+}
